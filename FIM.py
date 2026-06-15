@@ -2,6 +2,7 @@ import hashlib
 import time
 import os
 import json
+import sys
 from datetime import datetime
 
 BASELINE_FILE = "baseline.json"
@@ -16,7 +17,7 @@ def log_alert(message):
         log_file.write(formatted_message + "\n")
 
 def get_file_hash(filepath):
-    """Safely calculates SHA-256 binary hash hashes of given file assets."""
+    """Safely calculates SHA-256 binary hashes of given file assets."""
     try:
         with open(filepath, "rb") as file:
             content = file.read()
@@ -57,8 +58,11 @@ def save_baseline(baseline_data):
         log_alert(f"SYSTEM ERROR - Baseline save failure: {e}")
 
 def main():
-    print("=== ENTERPRISE DIRECTORY INTEGRITY MONITOR ===")
+    print("=== ZERO-TRUST DIRECTORY INTEGRITY MONITOR ===")
     
+    # Check for administrative CLI overrides
+    force_rebaseline = "--rebaseline" in sys.argv
+
     # 1. Dynamic Directory Allocation
     while True:
         directory_to_watch = input("Enter the full path of the folder to monitor: ").strip()
@@ -66,47 +70,41 @@ def main():
             break
         print("[!] Invalid directory path. Please attempt configuration again.")
 
-    # 2. Baseline State Extraction
-    baseline = load_baseline()
-    
-    if baseline is None:
-        print("\n[*] Initial configuration: No baseline data found. Mapping target folder...")
+    # 2. Immutable Baseline Extraction Logic
+    if force_rebaseline:
+        print("\n[!] Administrative Override: Forcing baseline reconstruction...")
         baseline = scan_directory(directory_to_watch)
         save_baseline(baseline)
-        print(f"[+] Success: Formatted baseline for {len(baseline)} files to disk.\n")
+        print(f"[+] Success: Overwritten baseline for {len(baseline)} files to disk.\n")
     else:
-        print(f"\n[+] Active Verification: Persistent state found. Tracking baseline...")
+        baseline = load_baseline()
+        if baseline is None:
+            print("\n[*] Initial Setup: No baseline found. Initializing golden image...")
+            baseline = scan_directory(directory_to_watch)
+            save_baseline(baseline)
+            print(f"[+] Success: Initial baseline captured for {len(baseline)} files.\n")
+        else:
+            print(f"\n[+] Active Verification: Persistent state locked. Monitoring active...")
 
-    print(f"[*] Monitoring Status: Scanning '{directory_to_watch}' recursively... (Ctrl+C to quit)")
+    print(f"[*] Security Status: Continuous tracking armed. (Ctrl+C to terminate)")
     
-    # 3. Dynamic Analysis Loop
+    # 3. Zero-Trust Verification Loop
     while True:
         try:
             time.sleep(2)
             current_snapshot = scan_directory(directory_to_watch)
-            has_changes = False
             
-            # Evaluation Phase A: Deletions and Content Alterations
-            for file_path, original_hash in list(baseline.items()):
+            # Phase A: Check Baseline Assets (Deletions & Modifications)
+            for file_path, golden_hash in baseline.items():
                 if file_path not in current_snapshot:
-                    log_alert(f"CRITICAL - File DELETED: {file_path}")
-                    del baseline[file_path]
-                    has_changes = True
-                elif current_snapshot[file_path] != original_hash:
-                    log_alert(f"CRITICAL - File MODIFIED: {file_path}")
-                    baseline[file_path] = current_snapshot[file_path]
-                    has_changes = True
+                    log_alert(f"CRITICAL ALERT - File DELETED or MISSING: {file_path}")
+                elif current_snapshot[file_path] != golden_hash:
+                    log_alert(f"CRITICAL ALERT - INTEGRITY VIOLATION (Modified): {file_path}")
                     
-            # Evaluation Phase B: Malicious Payload Deployments (Creations)
-            for file_path, current_hash in current_snapshot.items():
+            # Phase B: Check for Intrusion Payloads (Creations)
+            for file_path in current_snapshot:
                 if file_path not in baseline:
-                    log_alert(f"WARNING - Unauthorized File CREATED: {file_path}")
-                    baseline[file_path] = current_hash
-                    has_changes = True
-            
-            # State Synchronization
-            if has_changes:
-                save_baseline(baseline)
+                    log_alert(f"WARNING ALERT - Unauthorized File DEPLOYED (Created): {file_path}")
                 
         except KeyboardInterrupt:
             print("\n[-] Session Terminated: Monitoring loop killed cleanly.")
